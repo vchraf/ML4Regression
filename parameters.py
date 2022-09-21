@@ -1,15 +1,18 @@
 from hyperopt import hp
 from hyperopt.pyll import scope
+from catboost import CatBoostRegressor
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 
 EXP_NAME        = "ML4Regression"
 TRACKING_URL    = "http://127.0.0.1:5000"
-MODEL           = LinearRegression
+MODEL           = CatBoostRegressor
+MODEL_NAME      = MODEL().__class__.__name__
+MODEL_REGISTER  = "RegressionModel"
 DATASET         = "./data/data"
-SEARCH_SPACE    = {'bootstrap': hp.choice('bootstrap', [True, False]),
-                 'max_depth': scope.int(hp.quniform('max_depth', 10, 100, 10)),
-                 'max_features': hp.choice('max_features', ['auto', 'sqrt']),
-                 'min_samples_leaf': hp.choice('min_samples_leaf', [1, 2, 4]),
-                 'min_samples_split': hp.choice('min_samples_split', [2, 5, 10]),
-                 'n_estimators': scope.int(hp.quniform('n_estimators', 100, 3000, 250))}
+SEARCH_SPACE    = {'learning_rate': hp.uniform('learning_rate', 0.05, 0.1),
+                 'depth': scope.int(hp.quniform('depth', 8, 15, 2)),
+                 'l2_leaf_reg': hp.choice('l2_leaf_reg', [0, 1, 2, 3]),
+                 'iterations': scope.int(hp.quniform('iterations', 100, 200, 10)),
+                 'verbose':False}
+

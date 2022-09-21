@@ -14,6 +14,9 @@ import mlflow.sklearn
 from mlflow.tracking import MlflowClient
 from mlflow.entities import ViewType
 
+from hyperopt import fmin, tpe, STATUS_OK, Trials
+
+
 def eval_metrics(actual, pred):
     rmse = np.sqrt(mean_squared_error(actual, pred))
     mae = mean_absolute_error(actual, pred)
@@ -29,31 +32,46 @@ def load_data(src):
     y_test = test[["price"]]
     return X_train, X_test, y_train, y_test
 
+def hyperparameterTuning(_model, _search_space):
+    def objective(params):
+        with mlflow.start_run():
+            model = _model(**params)
+            mlflow.set_tag("modele", model.__class__.__name__)
+            mlflow.set_tag("status", "hyperparameter-tuning")
+            mlflow.log_params(params)
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+            (rmse, mae, r2) = eval_metrics(y_test, y_pred)
+            mlflow.log_metric("rmse", rmse)
+            mlflow.log_metric("r2", r2)
+            mlflow.log_metric("mae", mae)
+        return {'loss': r2, 'status': STATUS_OK}
+    best_result = fmin(fn=objective, space=_search_space, algo=tpe.suggest, max_evals=50,trials=Trials())
+
 
 mlflow.set_tracking_uri(parameters.TRACKING_URL)
 mlflow.set_experiment(parameters.EXP_NAME)
 
-
-# client = MlflowClient(tracking_uri=mlflow.get_tracking_uri())
-
-# EXP_ID=dict(mlflow.get_experiment_by_name(parameters.EXP_NAME))['experiment_id']
-# run = client.search_runs(experiment_ids=EXP_ID, run_view_type=ViewType.ACTIVE_ONLY, max_results=1, order_by=["metrics.r2  DESC"])[0]
-# model_params = run.data.params
-# for key in model_params.keys():
-#     try:
-#         model_params[key] = ast.literal_eval(model_params[key])
-#     except : pass
-
-
-
 X_train, X_test, y_train, y_test = load_data(src=parameters.DATASET)
 
+_ = hyperparameterTuning(parameters.MODEL, parameters.SEARCH_SPACE)
+
+
+client = MlflowClient(tracking_uri=mlflow.get_tracking_uri())
+
+EXP_ID=dict(mlflow.get_experiment_by_name(parameters.EXP_NAME))['experiment_id']
+run = client.search_runs(experiment_ids=EXP_ID, run_view_type=ViewType.ACTIVE_ONLY, max_results=1, order_by=["metrics.r2  DESC"])[0]
+model_params = run.data.params
+for key in model_params.keys():
+    try:
+        model_params[key] = ast.literal_eval(model_params[key])
+    except : pass
+
 with mlflow.start_run():
-    model = parameters.MODEL()
-    print(model.__class__.__name__)
+    model = parameters.MODEL(**model_params)
     mlflow.set_tag("modele", model.__class__.__name__)
     mlflow.set_tag("status", "final")
-    # mlflow.log_params(best_params)
+    mlflow.log_params(model_params)
     
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
@@ -67,3 +85,21 @@ with mlflow.start_run():
     mlflow.log_metric("mae", mae)
     mlflow.sklearn.log_model(model, "model", registered_model_name=model.__class__.__name__)
 
+_model = client.get_latest_versions(name=parameters.MODEL_NAME)[0]
+
+try:
+    client.create_registered_model(parameters.MODEL_REGISTER)
+except: 
+    client.get_registered_model(parameters.MODEL_REGISTER)
+
+result = client.create_model_version(
+    name=parameters.MODEL_REGISTER,
+    source=_model.source,
+    run_id=_model.run_id
+)
+client.transition_model_version_stage(
+    name=parameters.MODEL_REGISTER,
+    version=result.version,
+    stage="Staging",
+    archive_existing_versions=False
+)
