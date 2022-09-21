@@ -32,6 +32,7 @@ def load_data(src):
     y_test = test[["price"]]
     return X_train, X_test, y_train, y_test
 
+
 def hyperparameterTuning(_model, _search_space):
     def objective(params):
         with mlflow.start_run():
@@ -53,10 +54,10 @@ mlflow.set_tracking_uri(parameters.TRACKING_URL)
 mlflow.set_experiment(parameters.EXP_NAME)
 
 X_train, X_test, y_train, y_test = load_data(src=parameters.DATASET)
-
+print("hyperparameter-Tuning")
 _ = hyperparameterTuning(parameters.MODEL, parameters.SEARCH_SPACE)
 
-
+print("get The best Params")
 client = MlflowClient(tracking_uri=mlflow.get_tracking_uri())
 
 EXP_ID=dict(mlflow.get_experiment_by_name(parameters.EXP_NAME))['experiment_id']
@@ -67,6 +68,8 @@ for key in model_params.keys():
         model_params[key] = ast.literal_eval(model_params[key])
     except : pass
 
+print("train new model")
+print("model parameters: ",model_params)
 with mlflow.start_run():
     model = parameters.MODEL(**model_params)
     mlflow.set_tag("modele", model.__class__.__name__)
@@ -103,3 +106,4 @@ client.transition_model_version_stage(
     stage="Staging",
     archive_existing_versions=False
 )
+print(f"Model :{parameters.MODEL_NAME}, model Regester: {parameters.MODEL_REGISTER}, Stage: Staging")
