@@ -52,16 +52,17 @@ def hyperparameterTuning(_model, _search_space):
 
 mlflow.set_tracking_uri(parameters.TRACKING_URL)
 mlflow.set_experiment(parameters.EXP_NAME)
+client = MlflowClient(tracking_uri=mlflow.get_tracking_uri())
 
 X_train, X_test, y_train, y_test = load_data(src=parameters.DATASET)
+
 print("hyperparameter-Tuning")
 _ = hyperparameterTuning(parameters.MODEL, parameters.SEARCH_SPACE)
 
 print("get The best Params")
-client = MlflowClient(tracking_uri=mlflow.get_tracking_uri())
 
 EXP_ID=dict(mlflow.get_experiment_by_name(parameters.EXP_NAME))['experiment_id']
-run = client.search_runs(experiment_ids=EXP_ID, run_view_type=ViewType.ACTIVE_ONLY, max_results=1, order_by=["metrics.r2  DESC"])[0]
+run = client.search_runs(experiment_ids=EXP_ID, filter_string=f"tags.modele = '{parameters.MODEL_NAME}'", run_view_type=ViewType.ACTIVE_ONLY, max_results=1, order_by=["metrics.r2  DESC"])[0]
 model_params = run.data.params
 for key in model_params.keys():
     try:
@@ -70,6 +71,7 @@ for key in model_params.keys():
 
 print("train new model")
 print("model parameters: ",model_params)
+X_train, X_test, y_train, y_test = load_data(src=parameters.DATASET)
 with mlflow.start_run():
     model = parameters.MODEL(**model_params)
     mlflow.set_tag("modele", model.__class__.__name__)
@@ -106,4 +108,5 @@ client.transition_model_version_stage(
     stage="Staging",
     archive_existing_versions=False
 )
+
 print(f"Model :{parameters.MODEL_NAME}, model Regester: {parameters.MODEL_REGISTER}, Stage: Staging")
